@@ -25,7 +25,7 @@ pub fn sketchybar_message(message: &str) -> Option<String> {
 }
 
 fn format_mach_message(message: &str) -> Vec<u8> {
-    let mut formatted_message = vec!['\0'; message.len() + 1];
+    let mut formatted_message = vec!['\0'; message.len() + 2];
 
     let mut quote = '\0';
     let mut caret = 0;
@@ -54,6 +54,7 @@ fn format_mach_message(message: &str) -> Vec<u8> {
     }
 
     formatted_message[caret] = '\0';
+    formatted_message[caret + 1] = '\0';
 
     formatted_message
         .iter()

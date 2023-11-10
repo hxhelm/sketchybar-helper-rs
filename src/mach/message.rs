@@ -9,7 +9,7 @@ pub fn sketchybar_message(message: &str) -> Option<String> {
     println!("global_mach_port: {}", *global_mach_port);
 
     let mut formatted_message = format_mach_message(message);
-    let formatted_message_length = (formatted_message.len() + 1) as u32;
+    let formatted_message_length = formatted_message.len();
 
     let response = mach_send_message(
         *global_mach_port,
@@ -28,8 +28,9 @@ fn format_mach_message(message: &str) -> Vec<u8> {
     let mut formatted_message = vec!['\0'; message.len() + 2];
 
     let mut quote = '\0';
-    let mut caret = 0;
+    let mut caret: usize = 0;
 
+    // TODO: check if this can be replaced by normal string manipulation
     for c in message.chars() {
         if c == '"' || c == '\'' {
             if c == quote {
@@ -40,10 +41,10 @@ fn format_mach_message(message: &str) -> Vec<u8> {
             continue;
         }
 
-        formatted_message[caret as usize] = c;
+        formatted_message[caret] = c;
 
         if c == ' ' && quote == '\0' {
-            formatted_message[caret as usize] = '\0';
+            formatted_message[caret] = '\0';
         }
 
         caret += 1;

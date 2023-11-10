@@ -1,7 +1,6 @@
 mod mach;
 
 use crate::mach::message::sketchybar_message;
-use rand::Rng;
 
 fn main() {
     let message = "--reload";

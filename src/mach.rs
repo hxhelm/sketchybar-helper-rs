@@ -128,8 +128,22 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
         return None;
     }
 
+    // TODO: https://dmcyk.xyz/post/xnu_ipc_i_mach_messages/
+    //  https://dmcyk.xyz/post/xnu_ipc_iii_ool_data/
+
+    let mut msg = MachMessage {
+        header: Default::default(),
+        msgh_descriptor_count: 1,
+        descriptor: mach_msg_ool_descriptor_t::new(
+            std::ptr::null_mut(),
+            false,
+            MACH_MSG_VIRTUAL_COPY,
+            0,
+        ),
+    };
+
     let mach_msg_size = size_of::<MachMessage>() as mach_msg_size_t;
-    let header = mach_msg_header_t {
+    msg.header = mach_msg_header_t {
         msgh_bits: MACH_MSGH_BITS_SET(
             MACH_MSG_TYPE_COPY_SEND,
             MACH_MSG_TYPE_MAKE_SEND,
@@ -143,22 +157,12 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
         msgh_id: response_port as mach_msg_id_t,
     };
 
-    let msgh_descriptor_count = 1;
-
-    let descriptor = mach_msg_ool_descriptor_t {
-        address: message.as_ptr() as *mut _,
-        deallocate: 0,
-        copy: MACH_MSG_VIRTUAL_COPY as u8,
-        pad1: 0,
-        type_: MACH_MSG_OOL_DESCRIPTOR as u8,
-        size: (length * size_of::<c_char>()) as u32,
-    };
-
-    let mut msg = MachMessage {
-        header,
-        msgh_descriptor_count,
-        descriptor,
-    };
+    msg.descriptor = mach_msg_ool_descriptor_t::new(
+        message.as_ptr() as *mut _,
+        false,
+        MACH_MSG_VIRTUAL_COPY,
+        (length * size_of::<c_char>()) as u32,
+    );
 
     let kernel_return = unsafe {
         mach_msg(

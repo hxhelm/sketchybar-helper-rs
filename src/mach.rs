@@ -17,9 +17,10 @@ use mach2::traps::mach_task_self;
 use std::ffi::{CStr, CString};
 use std::mem::size_of;
 use std::os::raw::c_char;
+use std::ptr::addr_of;
 use std::sync::{Mutex, MutexGuard};
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy, Clone)]
 struct MachMessage {
     header: mach_msg_header_t,
@@ -70,10 +71,12 @@ fn mach_receive_message(port: mach_port_t, buffer: &mut MachBuffer, timeout: boo
     // reset buffer. maybe create a new one instead of passing mutable reference?
     *buffer = MachBuffer::default();
 
+    let header = addr_of!(buffer.message.header);
+
     let msg_return = match timeout {
         true => unsafe {
             mach_msg(
-                &mut buffer.message.header,
+                header as *mut _,
                 MACH_RCV_MSG | MACH_RCV_TIMEOUT,
                 0,
                 size_of::<MachBuffer>() as mach_msg_size_t,
@@ -84,7 +87,7 @@ fn mach_receive_message(port: mach_port_t, buffer: &mut MachBuffer, timeout: boo
         },
         false => unsafe {
             mach_msg(
-                &mut buffer.message.header,
+                header as *mut _,
                 MACH_RCV_MSG,
                 0,
                 size_of::<MachBuffer>() as mach_msg_size_t,
@@ -147,6 +150,8 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
         msgh_id: response_port as mach_msg_id_t,
     };
 
+    msg.msgh_descriptor_count = 1;
+
     msg.descriptor = mach_msg_ool_descriptor_t::new(
         message.as_ptr() as *mut _,
         false,
@@ -154,11 +159,11 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
         (length * size_of::<c_char>()) as u32,
     );
 
-    msg.msgh_descriptor_count = 0; // TODO: why does it only work with 0?
+    let header_ptr = addr_of!(msg.header) as *mut _;
 
     let kernel_return = unsafe {
         mach_msg(
-            &mut msg.header,
+            header_ptr,
             MACH_SEND_MSG,
             mach_msg_size,
             0,
@@ -185,7 +190,7 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
     }
 
     unsafe {
-        mach_msg_destroy(&mut buffer.message.header);
+        mach_msg_destroy(header_ptr);
         mach_port_destroy(task, response_port);
     };
 

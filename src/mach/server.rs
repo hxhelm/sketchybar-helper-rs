@@ -99,7 +99,8 @@ fn mach_server_begin(
                 .to_str()
                 .unwrap()
         });
-        unsafe { mach_msg_destroy(&mut buffer.message.header) };
+        let mut buffer_header_copy = buffer.message.header;
+        unsafe { mach_msg_destroy(&mut buffer_header_copy) };
     }
 
     true

@@ -8,9 +8,8 @@ use mach2::message::{
     mach_msg, mach_msg_bits_t, mach_msg_destroy, mach_msg_header_t, mach_msg_id_t,
     mach_msg_ool_descriptor_t, mach_msg_size_t, mach_msg_trailer_t, MACH_MSGH_BITS_COMPLEX,
     MACH_MSGH_BITS_LOCAL_MASK, MACH_MSGH_BITS_PORTS_MASK, MACH_MSGH_BITS_REMOTE_MASK,
-    MACH_MSGH_BITS_VOUCHER_MASK, MACH_MSG_OOL_DESCRIPTOR, MACH_MSG_SUCCESS, MACH_MSG_TIMEOUT_NONE,
-    MACH_MSG_TYPE_COPY_SEND, MACH_MSG_TYPE_MAKE_SEND, MACH_MSG_VIRTUAL_COPY, MACH_RCV_MSG,
-    MACH_RCV_TIMEOUT, MACH_SEND_MSG,
+    MACH_MSGH_BITS_VOUCHER_MASK, MACH_MSG_SUCCESS, MACH_MSG_TIMEOUT_NONE, MACH_MSG_TYPE_COPY_SEND,
+    MACH_MSG_TYPE_MAKE_SEND, MACH_MSG_VIRTUAL_COPY, MACH_RCV_MSG, MACH_RCV_TIMEOUT, MACH_SEND_MSG,
 };
 use mach2::port::{mach_port_t, MACH_PORT_NULL, MACH_PORT_RIGHT_RECEIVE};
 use mach2::task::{task_get_special_port, TASK_BOOTSTRAP_PORT};
@@ -28,6 +27,21 @@ struct MachMessage {
     descriptor: mach_msg_ool_descriptor_t,
 }
 
+impl Default for MachMessage {
+    fn default() -> Self {
+        Self {
+            header: mach_msg_header_t::default(),
+            msgh_descriptor_count: 0,
+            descriptor: mach_msg_ool_descriptor_t::new(
+                std::ptr::null_mut(),
+                false,
+                MACH_MSG_VIRTUAL_COPY,
+                0,
+            ),
+        }
+    }
+}
+
 #[repr(C)]
 struct MachBuffer {
     message: MachMessage,
@@ -37,23 +51,7 @@ struct MachBuffer {
 impl Default for MachBuffer {
     fn default() -> Self {
         Self {
-            message: MachMessage {
-                header: mach_msg_header_t {
-                    msgh_bits: 0,
-                    msgh_size: 0,
-                    msgh_remote_port: 0,
-                    msgh_local_port: 0,
-                    msgh_voucher_port: 0,
-                    msgh_id: 0,
-                },
-                msgh_descriptor_count: 0,
-                descriptor: mach_msg_ool_descriptor_t::new(
-                    std::ptr::null_mut(),
-                    false,
-                    MACH_MSG_VIRTUAL_COPY,
-                    0,
-                ),
-            },
+            message: MachMessage::default(),
             trailer: mach_msg_trailer_t {
                 msgh_trailer_type: 0,
                 msgh_trailer_size: 0,
@@ -99,7 +97,8 @@ fn mach_receive_message(port: mach_port_t, buffer: &mut MachBuffer, timeout: boo
 
     println!(
         "received message: {}, msg_return: {}",
-        buffer.message.descriptor.address as u64, msg_return
+        buffer.message.descriptor.address as u64,
+        format!("{:X}", msg_return)
     );
 
     if msg_return != MACH_MSG_SUCCESS {
@@ -131,16 +130,7 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
     // TODO: https://dmcyk.xyz/post/xnu_ipc_i_mach_messages/
     //  https://dmcyk.xyz/post/xnu_ipc_iii_ool_data/
 
-    let mut msg = MachMessage {
-        header: Default::default(),
-        msgh_descriptor_count: 1,
-        descriptor: mach_msg_ool_descriptor_t::new(
-            std::ptr::null_mut(),
-            false,
-            MACH_MSG_VIRTUAL_COPY,
-            0,
-        ),
-    };
+    let mut msg = MachMessage::default();
 
     let mach_msg_size = size_of::<MachMessage>() as mach_msg_size_t;
     msg.header = mach_msg_header_t {
@@ -164,6 +154,8 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
         (length * size_of::<c_char>()) as u32,
     );
 
+    msg.msgh_descriptor_count = 0; // TODO: why does it only work with 0?
+
     let kernel_return = unsafe {
         mach_msg(
             &mut msg.header,
@@ -178,7 +170,8 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
 
     println!(
         "sent message: {:?}, kernel_return: {}",
-        message, kernel_return
+        message,
+        format!("{:X}", kernel_return)
     );
 
     let mut buffer = MachBuffer::default();

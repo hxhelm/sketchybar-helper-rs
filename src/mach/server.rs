@@ -108,5 +108,5 @@ fn mach_server_begin(
 
 pub fn event_server_begin(event_handler: HandlerT, bootstrap_name: &str) -> bool {
     let mut mach_server = G_MACH_SERVER.lock().unwrap();
-    mach_server_begin(&mut (*mach_server), event_handler, bootstrap_name)
+    mach_server_begin(&mut mach_server, event_handler, bootstrap_name)
 }

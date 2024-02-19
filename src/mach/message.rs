@@ -6,8 +6,6 @@ pub fn sketchybar_message(message: &str) -> Option<String> {
         *global_mach_port = mach_get_bs_port();
     }
 
-    println!("global_mach_port: {}", *global_mach_port);
-
     let mut formatted_message = format_mach_message(message);
     let formatted_message_length = formatted_message.len();
 

@@ -98,12 +98,6 @@ fn mach_receive_message(port: mach_port_t, buffer: &mut MachBuffer, timeout: boo
         },
     };
 
-    println!(
-        "received message: {}, msg_return: {}",
-        buffer.message.descriptor.address as u64,
-        format!("{:X}", msg_return)
-    );
-
     if msg_return != MACH_MSG_SUCCESS {
         buffer.message.descriptor.address = std::ptr::null_mut();
     }
@@ -129,9 +123,6 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
     {
         return None;
     }
-
-    // TODO: https://dmcyk.xyz/post/xnu_ipc_i_mach_messages/
-    //  https://dmcyk.xyz/post/xnu_ipc_iii_ool_data/
 
     let mut msg = MachMessage::default();
 
@@ -161,7 +152,7 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
 
     let header_ptr = addr_of!(msg.header) as *mut _;
 
-    let kernel_return = unsafe {
+    unsafe {
         mach_msg(
             header_ptr,
             MACH_SEND_MSG,
@@ -173,16 +164,10 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
         )
     };
 
-    println!(
-        "sent message: {:?}, kernel_return: {}",
-        message,
-        format!("{:X}", kernel_return)
-    );
-
     let mut buffer = MachBuffer::default();
     mach_receive_message(response_port, &mut buffer, true);
 
-    if buffer.message.descriptor.address != std::ptr::null_mut() {
+    if buffer.message.descriptor.address.is_null() {
         return Some(unsafe {
             let c_str = CStr::from_ptr(buffer.message.descriptor.address as *const _);
             CString::from(c_str)
@@ -194,7 +179,7 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
         mach_port_destroy(task, response_port);
     };
 
-    return None;
+    None
 }
 
 fn mach_get_bs_port() -> mach_port_t {

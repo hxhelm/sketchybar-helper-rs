@@ -14,7 +14,7 @@ use mach2::message::{
 use mach2::port::{mach_port_t, MACH_PORT_NULL, MACH_PORT_RIGHT_RECEIVE};
 use mach2::task::{task_get_special_port, TASK_BOOTSTRAP_PORT};
 use mach2::traps::mach_task_self;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::ptr::addr_of;
@@ -103,7 +103,7 @@ fn mach_receive_message(port: mach_port_t, buffer: &mut MachBuffer, timeout: boo
     }
 }
 
-fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Option<CString> {
+fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Option<String> {
     if message.is_empty() || port == 0 {
         return None;
     }
@@ -168,10 +168,9 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
     mach_receive_message(response_port, &mut buffer, true);
 
     if !buffer.message.descriptor.address.is_null() {
-        return Some(unsafe {
-            let c_str = CStr::from_ptr(buffer.message.descriptor.address as *const _);
-            CString::from(c_str)
-        });
+        return Some(read_double_nul_terminated_string_from_address(
+            buffer.message.descriptor.address as *const _,
+        ));
     }
 
     unsafe {

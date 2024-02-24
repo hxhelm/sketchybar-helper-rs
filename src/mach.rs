@@ -1,5 +1,5 @@
 pub mod message;
-mod server;
+pub mod server;
 
 use mach2::bootstrap::bootstrap_look_up;
 use mach2::kern_return::KERN_SUCCESS;
@@ -167,7 +167,7 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
     let mut buffer = MachBuffer::default();
     mach_receive_message(response_port, &mut buffer, true);
 
-    if buffer.message.descriptor.address.is_null() {
+    if !buffer.message.descriptor.address.is_null() {
         return Some(unsafe {
             let c_str = CStr::from_ptr(buffer.message.descriptor.address as *const _);
             CString::from(c_str)
@@ -202,6 +202,27 @@ fn mach_get_bs_port() -> mach_port_t {
     }
 
     port
+}
+
+pub fn read_double_nul_terminated_string_from_address(address: *const c_char) -> String {
+    let mut caret = 0;
+    let mut result = String::new();
+
+    loop {
+        if unsafe { *address.add(caret) } == 0 {
+            if unsafe { *address.add(caret + 1) } == 0 {
+                break;
+            }
+
+            result.push('\n');
+        } else {
+            result.push(char::from(unsafe { *address.add(caret) } as u8));
+        }
+
+        caret += 1;
+    }
+
+    result
 }
 
 #[allow(non_snake_case)]

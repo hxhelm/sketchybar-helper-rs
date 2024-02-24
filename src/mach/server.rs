@@ -10,6 +10,7 @@ use mach2::task::{task_get_special_port, TASK_BOOTSTRAP_PORT};
 use mach2::traps::mach_task_self;
 use std::ffi::CString;
 use std::os::unix::raw::pthread_t;
+use std::ptr::addr_of;
 use std::sync::Mutex;
 
 type HandlerT = fn(&str);
@@ -102,8 +103,7 @@ fn mach_server_begin(
             )
             .as_str()
         });
-        let mut buffer_header_copy = buffer.message.header;
-        unsafe { mach_msg_destroy(&mut buffer_header_copy) };
+        unsafe { mach_msg_destroy(addr_of!(buffer.message.header) as *mut _) };
     }
 
     true

@@ -9,17 +9,11 @@ pub fn sketchybar_message(message: &str) -> Option<String> {
     let mut formatted_message = format_mach_message(message);
     let formatted_message_length = formatted_message.len();
 
-    let response = mach_send_message(
+    mach_send_message(
         *global_mach_port,
         &mut formatted_message,
         formatted_message_length,
-    );
-
-    if let Some(response_message) = response {
-        return Some(String::from(response_message.to_str().unwrap()));
-    }
-
-    None
+    )
 }
 
 fn format_mach_message(message: &str) -> Vec<u8> {

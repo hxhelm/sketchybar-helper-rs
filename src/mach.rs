@@ -3,7 +3,9 @@ pub mod server;
 
 use mach2::bootstrap::bootstrap_look_up;
 use mach2::kern_return::KERN_SUCCESS;
-use mach2::mach_port::{mach_port_allocate, mach_port_destroy, mach_port_insert_right};
+use mach2::mach_port::{
+    mach_port_allocate, mach_port_deallocate, mach_port_insert_right, mach_port_mod_refs,
+};
 use mach2::message::{
     mach_msg, mach_msg_bits_t, mach_msg_destroy, mach_msg_header_t, mach_msg_id_t,
     mach_msg_ool_descriptor_t, mach_msg_size_t, mach_msg_trailer_t, MACH_MSGH_BITS_COMPLEX,
@@ -167,18 +169,21 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
     let mut buffer = MachBuffer::default();
     mach_receive_message(response_port, &mut buffer, true);
 
-    if !buffer.message.descriptor.address.is_null() {
-        return Some(read_double_nul_terminated_string_from_address(
+    let response = if !buffer.message.descriptor.address.is_null() {
+        Some(read_double_nul_terminated_string_from_address(
             buffer.message.descriptor.address as *const _,
-        ));
-    }
+        ))
+    } else {
+        None
+    };
 
     unsafe {
         mach_msg_destroy(header_ptr);
-        mach_port_destroy(task, response_port);
+        mach_port_mod_refs(task, response_port, MACH_PORT_RIGHT_RECEIVE, -1);
+        mach_port_deallocate(task, response_port)
     };
 
-    None
+    response
 }
 
 fn mach_get_bs_port() -> mach_port_t {

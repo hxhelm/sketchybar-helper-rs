@@ -7,7 +7,6 @@ use mach2::port::{mach_port_name_t, mach_port_t, MACH_PORT_RIGHT_RECEIVE};
 use mach2::task::{task_get_special_port, TASK_BOOTSTRAP_PORT};
 use mach2::traps::mach_task_self;
 use std::ffi::CString;
-use std::os::unix::raw::pthread_t;
 use std::sync::Mutex;
 
 type HandlerT = fn(&str);
@@ -17,7 +16,6 @@ struct MachServer {
     task: mach_port_name_t,
     port: mach_port_t,
     bs_port: mach_port_t,
-    thread: pthread_t,
     handler: HandlerT,
 }
 
@@ -26,7 +24,6 @@ static G_MACH_SERVER: Mutex<MachServer> = Mutex::new(MachServer {
     task: 0,
     port: 0,
     bs_port: 0,
-    thread: 0,
     handler: |_: &str| Default::default(),
 });
 

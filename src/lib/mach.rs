@@ -1,19 +1,7 @@
-pub mod message;
-pub mod server;
-
 use mach2::bootstrap::bootstrap_look_up;
 use mach2::kern_return::KERN_SUCCESS;
-use mach2::mach_port::{
-    mach_port_allocate, mach_port_deallocate, mach_port_insert_right, mach_port_mod_refs,
-};
-use mach2::message::{
-    mach_msg, mach_msg_bits_t, mach_msg_destroy, mach_msg_header_t, mach_msg_id_t,
-    mach_msg_ool_descriptor_t, mach_msg_size_t, mach_msg_trailer_t, MACH_MSGH_BITS_COMPLEX,
-    MACH_MSGH_BITS_LOCAL_MASK, MACH_MSGH_BITS_PORTS_MASK, MACH_MSGH_BITS_REMOTE_MASK,
-    MACH_MSGH_BITS_VOUCHER_MASK, MACH_MSG_SUCCESS, MACH_MSG_TIMEOUT_NONE, MACH_MSG_TYPE_COPY_SEND,
-    MACH_MSG_TYPE_MAKE_SEND, MACH_MSG_VIRTUAL_COPY, MACH_RCV_INTERRUPT, MACH_RCV_MSG,
-    MACH_RCV_TIMEOUT, MACH_SEND_MSG,
-};
+use mach2::mach_port::*;
+use mach2::message::*;
 use mach2::port::{mach_port_t, MACH_PORT_NULL, MACH_PORT_RIGHT_RECEIVE};
 use mach2::task::{task_get_special_port, TASK_BOOTSTRAP_PORT};
 use mach2::traps::mach_task_self;
@@ -47,7 +35,7 @@ impl Default for MachMessage {
 }
 
 #[repr(C, packed)]
-struct MachBuffer {
+pub(crate) struct MachBuffer {
     message: MachMessage,
     trailer: mach_msg_trailer_t,
 }
@@ -65,7 +53,7 @@ impl Default for MachBuffer {
 }
 
 impl MachBuffer {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
@@ -77,11 +65,11 @@ impl MachBuffer {
         };
     }
 
-    fn receive_message(&mut self, port: mach_port_t, timeout: bool) {
+    pub(crate) fn receive_message(&mut self, port: mach_port_t, timeout: bool) {
         mach_receive_message(port, self, timeout);
     }
 
-    fn get_response(&self) -> Option<String> {
+    pub(crate) fn get_response(&self) -> Option<String> {
         if !self.message.descriptor.address.is_null() {
             Some(read_double_nul_terminated_string_from_address(
                 self.message.descriptor.address as *const _,
@@ -90,11 +78,17 @@ impl MachBuffer {
             None
         }
     }
+
+    pub(crate) fn cleanup(&mut self) {
+        unsafe {
+            mach_msg_destroy(addr_of_mut!(self.message.header));
+        }
+    }
 }
 
 static G_MACH_PORT: Mutex<mach_port_t> = Mutex::new(0);
 
-fn get_global_mach_port() -> MutexGuard<'static, mach_port_t> {
+pub(crate) fn get_global_mach_port() -> MutexGuard<'static, mach_port_t> {
     G_MACH_PORT.lock().unwrap()
 }
 
@@ -133,7 +127,11 @@ fn mach_receive_message(port: mach_port_t, buffer: &mut MachBuffer, timeout: boo
     }
 }
 
-fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Option<String> {
+pub(crate) fn mach_send_message(
+    port: mach_port_t,
+    message: &mut [u8],
+    length: usize,
+) -> Option<String> {
     if message.is_empty() || port == 0 {
         return None;
     }
@@ -197,7 +195,7 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
     let response = buffer.get_response();
 
     unsafe {
-        mach_msg_destroy(addr_of_mut!(buffer.message.header));
+        buffer.cleanup();
         mach_port_mod_refs(task, response_port, MACH_PORT_RIGHT_RECEIVE, -1);
         mach_port_deallocate(task, response_port)
     };
@@ -205,7 +203,7 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
     response
 }
 
-fn mach_get_bs_port() -> mach_port_t {
+pub(crate) fn mach_get_bs_port() -> mach_port_t {
     let task = unsafe { mach_task_self() };
     let mut bs_port = 0;
 

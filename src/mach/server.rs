@@ -1,6 +1,4 @@
-use crate::mach::{
-    mach_receive_message, read_double_nul_terminated_string_from_address, MachBuffer,
-};
+use crate::mach::MachBuffer;
 use mach2::bootstrap::bootstrap_register;
 use mach2::kern_return::KERN_SUCCESS;
 use mach2::mach_port::{mach_port_allocate, mach_port_insert_right};
@@ -10,7 +8,7 @@ use mach2::task::{task_get_special_port, TASK_BOOTSTRAP_PORT};
 use mach2::traps::mach_task_self;
 use std::ffi::CString;
 use std::os::unix::raw::pthread_t;
-use std::ptr::addr_of;
+use std::ptr::addr_of_mut;
 use std::sync::Mutex;
 
 type HandlerT = fn(&str);
@@ -21,8 +19,6 @@ struct MachServer {
     port: mach_port_t,
     bs_port: mach_port_t,
     thread: pthread_t,
-    // current handler usage in c implementation: function pointer, defined externally with custom
-    // logic and then passed to event_server_begin
     handler: HandlerT,
 }
 
@@ -94,16 +90,11 @@ fn mach_server_begin(
     mach_server.handler = handler;
     mach_server.is_running = true;
 
-    let mut buffer = MachBuffer::default();
+    let mut buffer = MachBuffer::new();
     while mach_server.is_running {
-        mach_receive_message(mach_server.port, &mut buffer, false);
-        (mach_server.handler)(unsafe {
-            read_double_nul_terminated_string_from_address(
-                buffer.message.descriptor.address as *const _,
-            )
-            .as_str()
-        });
-        unsafe { mach_msg_destroy(addr_of!(buffer.message.header) as *mut _) };
+        buffer.receive_message(mach_server.port, false);
+        (mach_server.handler)(buffer.get_response().unwrap_or(String::new()).as_str());
+        unsafe { mach_msg_destroy(addr_of_mut!(buffer.message.header)) };
     }
 
     true

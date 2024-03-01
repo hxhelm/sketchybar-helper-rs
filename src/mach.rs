@@ -11,7 +11,8 @@ use mach2::message::{
     mach_msg_ool_descriptor_t, mach_msg_size_t, mach_msg_trailer_t, MACH_MSGH_BITS_COMPLEX,
     MACH_MSGH_BITS_LOCAL_MASK, MACH_MSGH_BITS_PORTS_MASK, MACH_MSGH_BITS_REMOTE_MASK,
     MACH_MSGH_BITS_VOUCHER_MASK, MACH_MSG_SUCCESS, MACH_MSG_TIMEOUT_NONE, MACH_MSG_TYPE_COPY_SEND,
-    MACH_MSG_TYPE_MAKE_SEND, MACH_MSG_VIRTUAL_COPY, MACH_RCV_MSG, MACH_RCV_TIMEOUT, MACH_SEND_MSG,
+    MACH_MSG_TYPE_MAKE_SEND, MACH_MSG_VIRTUAL_COPY, MACH_RCV_INTERRUPT, MACH_RCV_MSG,
+    MACH_RCV_TIMEOUT, MACH_SEND_MSG,
 };
 use mach2::port::{mach_port_t, MACH_PORT_NULL, MACH_PORT_RIGHT_RECEIVE};
 use mach2::task::{task_get_special_port, TASK_BOOTSTRAP_PORT};
@@ -19,7 +20,7 @@ use mach2::traps::mach_task_self;
 use std::ffi::CString;
 use std::mem::size_of;
 use std::os::raw::c_char;
-use std::ptr::addr_of;
+use std::ptr::addr_of_mut;
 use std::sync::{Mutex, MutexGuard};
 
 #[repr(C, packed)]
@@ -45,7 +46,7 @@ impl Default for MachMessage {
     }
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 struct MachBuffer {
     message: MachMessage,
     trailer: mach_msg_trailer_t,
@@ -63,6 +64,34 @@ impl Default for MachBuffer {
     }
 }
 
+impl MachBuffer {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn reset(&mut self) {
+        self.message = MachMessage::default();
+        self.trailer = mach_msg_trailer_t {
+            msgh_trailer_type: 0,
+            msgh_trailer_size: 0,
+        };
+    }
+
+    fn receive_message(&mut self, port: mach_port_t, timeout: bool) {
+        mach_receive_message(port, self, timeout);
+    }
+
+    fn get_response(&self) -> Option<String> {
+        if !self.message.descriptor.address.is_null() {
+            Some(read_double_nul_terminated_string_from_address(
+                self.message.descriptor.address as *const _,
+            ))
+        } else {
+            None
+        }
+    }
+}
+
 static G_MACH_PORT: Mutex<mach_port_t> = Mutex::new(0);
 
 fn get_global_mach_port() -> MutexGuard<'static, mach_port_t> {
@@ -70,26 +99,25 @@ fn get_global_mach_port() -> MutexGuard<'static, mach_port_t> {
 }
 
 fn mach_receive_message(port: mach_port_t, buffer: &mut MachBuffer, timeout: bool) {
-    // reset buffer. maybe create a new one instead of passing mutable reference?
-    *buffer = MachBuffer::default();
+    buffer.reset();
 
-    let header = addr_of!(buffer.message.header);
+    let header = addr_of_mut!(buffer.message.header);
 
     let msg_return = match timeout {
         true => unsafe {
             mach_msg(
-                header as *mut _,
-                MACH_RCV_MSG | MACH_RCV_TIMEOUT,
+                header,
+                MACH_RCV_MSG | MACH_RCV_TIMEOUT | MACH_RCV_INTERRUPT,
                 0,
                 size_of::<MachBuffer>() as mach_msg_size_t,
                 port,
-                100,
+                1000,
                 MACH_PORT_NULL,
             )
         },
         false => unsafe {
             mach_msg(
-                header as *mut _,
+                header,
                 MACH_RCV_MSG,
                 0,
                 size_of::<MachBuffer>() as mach_msg_size_t,
@@ -152,11 +180,9 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
         (length * size_of::<c_char>()) as u32,
     );
 
-    let header_ptr = addr_of!(msg.header) as *mut _;
-
     unsafe {
         mach_msg(
-            header_ptr,
+            addr_of_mut!(msg.header),
             MACH_SEND_MSG,
             mach_msg_size,
             0,
@@ -166,19 +192,12 @@ fn mach_send_message(port: mach_port_t, message: &mut [u8], length: usize) -> Op
         )
     };
 
-    let mut buffer = MachBuffer::default();
-    mach_receive_message(response_port, &mut buffer, true);
-
-    let response = if !buffer.message.descriptor.address.is_null() {
-        Some(read_double_nul_terminated_string_from_address(
-            buffer.message.descriptor.address as *const _,
-        ))
-    } else {
-        None
-    };
+    let mut buffer = MachBuffer::new();
+    buffer.receive_message(response_port, true);
+    let response = buffer.get_response();
 
     unsafe {
-        mach_msg_destroy(header_ptr);
+        mach_msg_destroy(addr_of_mut!(buffer.message.header));
         mach_port_mod_refs(task, response_port, MACH_PORT_RIGHT_RECEIVE, -1);
         mach_port_deallocate(task, response_port)
     };

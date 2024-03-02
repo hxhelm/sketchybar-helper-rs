@@ -1,6 +1,6 @@
 use crate::mach::{get_global_mach_port, mach_get_bs_port, mach_send_message};
 
-pub fn sketchybar_message(message: &str) -> Option<String> {
+pub fn message(message: &str) -> Option<String> {
     let mut global_mach_port = get_global_mach_port();
     if *global_mach_port == 0 {
         *global_mach_port = mach_get_bs_port();

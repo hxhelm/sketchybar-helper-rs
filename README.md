@@ -6,10 +6,10 @@ programs in Rust.
 
 ### Sending a message to SketchyBar
 ```rust
-use sketchybar_helper_rs::message::sketchybar_message;
+use sketchybar_helper_rs::message::message;
 
 fn main() {
-    sketchybar_message("--set foo label=bar");
+    message("--set foo label=bar");
 }
 ```
 
